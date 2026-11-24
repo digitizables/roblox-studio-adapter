@@ -167,7 +167,7 @@ class DataModelService:
 local HttpService = game:GetService("HttpService")
 local function resolve(path)
     local current = game
-    for segment in string.split(path, ".") do
+    for _, segment in ipairs(string.split(path, ".")) do
         if segment ~= "game" and segment ~= "" then
             current = current:FindFirstChild(segment)
             if current == nil then

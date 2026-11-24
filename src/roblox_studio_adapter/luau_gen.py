@@ -25,7 +25,7 @@ local function resolve(path)
     if path == nil or path == "" or path == "game" then
         return game
     end
-    for segment in string.split(path, ".") do
+    for _, segment in ipairs(string.split(path, ".")) do
         if segment ~= "game" and segment ~= "" then
             local child = current:FindFirstChild(segment)
             if child == nil and current == game then
