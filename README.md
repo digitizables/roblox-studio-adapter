@@ -166,6 +166,12 @@ Other errors worth catching:
 
 Screenshots are written under `.studio-adapter/artifacts` and the base64 is dropped. Script source is cached until it would exceed about 80,000 characters. `context.brief()` is the string to put back into the model, not the raw tool log.
 
+## Plugins
+
+This package does not generate terrain. `plugins/host` is a thin installer and CLI (`roblox-plugins`). A plugin depends on the adapter. The adapter does not import plugins.
+
+The terrain plugin is its own repository: [digitizables/roblox-terrain](https://github.com/digitizables/roblox-terrain). Install the host from this repo, then install that package. See `docs/plugins.md` and `plugins/host/README.md`.
+
 ## Extending
 
 When Roblox ships a tool, `doctor` lists it under "advertised tools with no overlay". Call it immediately:
@@ -197,8 +203,8 @@ agent.session.registry.add_overlay(ToolSpec(
 From the repository root:
 
 ```powershell
-$env:PYTHONPATH = "src"
-python -m unittest tests.test_framing_parsers_luau tests.test_session -v
+$env:PYTHONPATH = "src;plugins/host/src"
+python -m unittest tests.test_framing_parsers_luau tests.test_session tests.test_plugin_host -v
 ```
 
 Name the modules. A bare `unittest discover` from a parent folder can import unrelated tests on `sys.path`.
@@ -222,9 +228,10 @@ The longer notes are in `docs/limitations.md` and `docs/agent-playbook.md`. The 
 
 ```
 src/roblox_studio_adapter/    client, session, services, workflows
+plugins/host/        plugin discovery, config, and the roblox-plugins CLI
 examples/            read-only and opt-in mutating samples
-docs/                architecture, playbook, catalog, limits, sources
-tests/               framing, parsers, session policy
+docs/                architecture, playbook, catalog, limits, sources, plugins
+tests/               framing, parsers, session policy, plugin host
 ```
 
 ## License

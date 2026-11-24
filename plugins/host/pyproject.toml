@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "roblox-studio-plugin-host"
+version = "0.1.0"
+description = "Thin plugin host and terminal UI for packages that sit on roblox-studio-adapter."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Paul Beck" }]
+keywords = ["roblox", "roblox-studio", "plugins"]
+dependencies = ["roblox-studio-adapter"]
+
+[project.scripts]
+roblox-plugins = "roblox_studio_plugin_host.__main__:main"
+
+[project.urls]
+Homepage = "https://github.com/digitizables/roblox-studio-adapter"
+Repository = "https://github.com/digitizables/roblox-studio-adapter"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+roblox_studio_plugin_host = ["py.typed"]
