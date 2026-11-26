@@ -135,7 +135,7 @@ class ConsoleDelta:
 
 @dataclass
 class CheckResult:
-    """One named playtest check. ``op`` is contains, absent, or error_free."""
+    """One named playtest check. ``op`` is contains, absent, error_free, or probe."""
 
     id: str
     op: str
@@ -157,6 +157,7 @@ class PlaytestReport:
     passed: bool | None = None
     failures: list[str] = field(default_factory=list)
     checks: list[CheckResult] = field(default_factory=list)
+    probes: list[dict] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
 
 

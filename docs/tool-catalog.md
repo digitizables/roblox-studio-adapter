@@ -36,7 +36,7 @@ The overlay in `src/roblox_studio_adapter/catalog.py` is the source of truth for
 
 | Tool | Wrapper | Policy |
 | --- | --- | --- |
-| `start_stop_play` | `playtest.start`, `stop`, `run` | mutation. Solo play only. `expect_contains`, `expect_absent`, and `evidence_record` (`docs/evidence.md`) |
+| `start_stop_play` | `playtest.start`, `stop`, `run` | mutation. Solo play only. `expect_contains`, `expect_absent`, Server/Client `probes` before stop, and `evidence_record` (`docs/evidence.md`) |
 | `get_console_output` | `playtest.console`, `console_since_snapshot` | read. Full log. Diff it |
 | `screen_capture` | `capture.screenshot` | read. Timeout 90s. Base64 stored as a file |
 | `video_capture` | `playtest.record` | mutation, Client only. Stop payload keeps `status`, `recording_id`, artifact paths, and `warnings` |

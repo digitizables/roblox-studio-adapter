@@ -29,7 +29,11 @@ record = evidence_record(
 
 `N` is the 1-based position in the list you passed. The needle is copied onto `expect`. Empty strings are rejected before the playtest starts.
 
-`passed` is true when every check passed. It is null when `forbid_errors` is false and both lists are empty: the run was an observation. `failures` repeats the `detail` of each failed check.
+`passed` is true when every check passed. It is null when `forbid_errors` is false, both lists are empty, and there are no probes: the run was an observation. `failures` repeats the `detail` of each failed check.
+
+## Probes
+
+`probes` run while the playtest is still up, before `stop` deletes the Server and Client copies. Each item is `{"id", "expression", "datamodel"}` with `datamodel` of `Server` or `Client`. `expression` is one Luau expression. `equals` fails the check `probe.<id>` when the JSON value differs. A probe that raises is a failed check. The value is stored on the record even when the check passes. Empty `probes` is an empty array.
 
 ## Console
 

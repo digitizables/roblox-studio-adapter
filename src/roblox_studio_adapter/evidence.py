@@ -45,6 +45,7 @@ def evidence_record(
         "passed": report.passed,
         "failures": list(report.failures),
         "checks": plain(report.checks),
+        "probes": plain(report.probes),
         "play": {
             "mode_before": report.mode_before,
             "mode_after": report.mode_after,

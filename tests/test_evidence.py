@@ -23,6 +23,7 @@ class PlayClient:
         self.calls: list[tuple[str, dict]] = []
         self.playing = False
         self.console = "boot\n"
+        self.probe_while_playing = None
         self.replace_log = replace_log
         self.error = error
         self.protocol = "test"
@@ -42,6 +43,14 @@ class PlayClient:
             return ToolResultSafe(name, "ok")
         if name == "get_console_output":
             return ToolResultSafe(name, self.console)
+        if name == "execute_luau":
+            self.probe_while_playing = self.playing
+            code = arguments.get("code", "")
+            if "Mismatch" in code:
+                return ToolResultSafe(name, '{"ok": true, "value": "Other"}')
+            if "Boom" in code:
+                return ToolResultSafe(name, '{"ok": false, "error": "boom"}')
+            return ToolResultSafe(name, '{"ok": true, "value": "Baseplate"}')
         if name == "video_capture" and not arguments.get("is_start"):
             payload = {
                 "recording_id": "rec-1",
@@ -131,6 +140,34 @@ class PlaytestEvidenceTests(unittest.TestCase):
         self.assertTrue(report.console.reset)
         self.assertTrue(report.passed)
         self.assertTrue(any("full log" in note for note in report.notes))
+
+    def test_probes_run_before_stop_and_compare_equals(self) -> None:
+        client = PlayClient()
+        service = _service(client)
+        report = service.run(
+            seconds=0,
+            screenshot=False,
+            forbid_errors=False,
+            probes=[
+                {"id": "baseplate", "expression": "game.Workspace.Baseplate.Name", "datamodel": "Server", "equals": "Baseplate"},
+                {"id": "other", "expression": "Mismatch", "datamodel": "Client", "equals": "Baseplate"},
+            ],
+        )
+        self.assertTrue(client.probe_while_playing)
+        self.assertFalse(report.passed)
+        self.assertEqual(report.probes[0]["value"], "Baseplate")
+        self.assertTrue(report.probes[0]["ok"])
+        self.assertFalse(report.probes[1]["ok"])
+        self.assertTrue(any(check.id == "probe.other" and not check.passed for check in report.checks))
+        record = evidence_record(report, captured_at="2026-11-25T00:00:00Z")
+        self.assertEqual(len(record["probes"]), 2)
+
+    def test_bad_probe_does_not_start_play(self) -> None:
+        client = PlayClient()
+        service = _service(client)
+        with self.assertRaises(ValueError):
+            service.run(seconds=0, screenshot=False, probes=[{"id": "x", "expression": "game.Name", "datamodel": "Edit"}])
+        self.assertEqual(client.calls, [])
 
     def test_record_parses_video_artifacts(self) -> None:
         service = _service(PlayClient())

@@ -14,6 +14,7 @@
     "passed",
     "failures",
     "checks",
+    "probes",
     "play",
     "console",
     "artifacts",
@@ -27,6 +28,21 @@
     "intent_id": { "type": ["string", "null"] },
     "passed": { "type": ["boolean", "null"] },
     "failures": { "type": "array", "items": { "type": "string" } },
+    "probes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "datamodel", "ok", "value", "error"],
+        "properties": {
+          "id": { "type": "string" },
+          "datamodel": { "type": "string" },
+          "ok": { "type": "boolean" },
+          "value": {},
+          "error": { "type": ["string", "null"] }
+        }
+      }
+    },
     "checks": {
       "type": "array",
       "items": {
@@ -35,7 +51,7 @@
         "required": ["id", "op", "expect", "passed", "detail"],
         "properties": {
           "id": { "type": "string" },
-          "op": { "enum": ["contains", "absent", "error_free"] },
+          "op": { "enum": ["contains", "absent", "error_free", "probe"] },
           "expect": { "type": "string" },
           "passed": { "type": "boolean" },
           "detail": { "type": "string" }

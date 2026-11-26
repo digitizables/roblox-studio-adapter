@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import json
 import time
 from collections.abc import Callable
+from typing import Any
 
 from roblox_studio_adapter.errors import TimeoutError
 from roblox_studio_adapter.parsers import console_delta, parse_video_capture
@@ -54,6 +56,7 @@ class PlaytestService:
         expect_contains: list[str] | None = None,
         expect_absent: list[str] | None = None,
         forbid_errors: bool = True,
+        probes: list[dict] | None = None,
     ) -> PlaytestReport:
         """Play, wait, collect new output and an optional screenshot, then stop.
 
@@ -63,12 +66,16 @@ class PlaytestService:
 
         ``expect_contains`` and ``expect_absent`` are matched against the
         console delta. Empty strings are rejected before play starts.
+        ``probes`` are Luau expressions run on Server or Client while the
+        playtest is still going, before stop deletes that copy. Each probe
+        is ``{"id", "expression", "datamodel"}`` and may set ``equals``.
         ``passed`` is true when every named check succeeded. It is null when
-        the caller asked for no judgment (``forbid_errors`` false and both
-        lists empty). Store the JSON form with ``evidence_record``.
+        the caller asked for no judgment (``forbid_errors`` false, both lists
+        empty, and no probes). Store the JSON form with ``evidence_record``.
         """
         contains = _needles(expect_contains, "expect_contains")
         absent = _needles(expect_absent, "expect_absent")
+        probe_specs = _probe_specs(probes)
         before = self.state()
         started = not before.playing
         if started:
@@ -77,9 +84,13 @@ class PlaytestService:
             self.session.context.console_snapshot = self.console()
         shots: list[str] = []
         delta = ConsoleDelta(text="", reset=False)
+        probe_rows: list[dict] = []
+        probe_checks: list[CheckResult] = []
         try:
             if seconds > 0:
                 self.sleep(seconds)
+            if probe_specs:
+                probe_rows, probe_checks = self._collect_probes(probe_specs)
             if screenshot:
                 from roblox_studio_adapter.services.capture import CaptureService
 
@@ -92,7 +103,9 @@ class PlaytestService:
                 stopped = True
         after = self.state()
         checks, failures = _checks(delta, forbid_errors=forbid_errors, contains=contains, absent=absent)
-        judged = forbid_errors or bool(contains) or bool(absent)
+        checks.extend(probe_checks)
+        failures.extend(check.detail for check in probe_checks if not check.passed)
+        judged = forbid_errors or bool(contains) or bool(absent) or bool(probe_specs)
         passed = (not failures) if judged else None
         notes = [
             "start_stop_play runs a solo playtest. It does not start Team Test or a multi-client session.",
@@ -113,6 +126,7 @@ class PlaytestService:
             passed=passed,
             failures=failures,
             checks=checks,
+            probes=probe_rows,
             notes=notes,
         )
 
@@ -137,6 +151,52 @@ class PlaytestService:
             if time.monotonic() >= deadline:
                 raise TimeoutError(message)
             self.sleep(0.4)
+
+    def _collect_probes(self, probes: list[dict]) -> tuple[list[dict], list[CheckResult]]:
+        from roblox_studio_adapter.services.luau import LuauService
+
+        luau = LuauService(self.session)
+        rows: list[dict] = []
+        checks: list[CheckResult] = []
+        for probe in probes:
+            try:
+                value = luau.query(probe["expression"], datamodel=probe["datamodel"])
+            except Exception as exc:
+                rows.append(
+                    {
+                        "id": probe["id"],
+                        "datamodel": probe["datamodel"],
+                        "ok": False,
+                        "value": None,
+                        "error": str(exc),
+                    }
+                )
+                checks.append(
+                    CheckResult(
+                        f"probe.{probe['id']}",
+                        "probe",
+                        probe["expression"],
+                        False,
+                        f"probe {probe['id']} failed: {exc}",
+                    )
+                )
+                continue
+            ok = True
+            detail = f"probe {probe['id']} returned {value!r}"
+            if probe["has_equals"] and value != probe["equals"]:
+                ok = False
+                detail = f"probe {probe['id']} returned {value!r}, expected {probe['equals']!r}"
+            rows.append(
+                {
+                    "id": probe["id"],
+                    "datamodel": probe["datamodel"],
+                    "ok": ok,
+                    "value": _jsonable(value),
+                    "error": None,
+                }
+            )
+            checks.append(CheckResult(f"probe.{probe['id']}", "probe", probe["expression"], ok, detail))
+        return rows, checks
 
 
 def _needles(items: list[str] | None, label: str) -> list[str]:
@@ -178,3 +238,44 @@ def _checks(
         detail = f"output omitted {needle!r}" if ok else f"output contained forbidden {needle!r}"
         add(CheckResult(f"output.absent.{index}", "absent", needle, ok, detail))
     return checks, failures
+
+
+def _probe_specs(items: list[dict] | None) -> list[dict]:
+    if not items:
+        return []
+    cleaned: list[dict] = []
+    seen: set[str] = set()
+    for index, item in enumerate(items, start=1):
+        label = f"probes[{index}]"
+        if not isinstance(item, dict):
+            raise ValueError(f"{label} must be an object")
+        probe_id = item.get("id")
+        expression = item.get("expression")
+        datamodel = item.get("datamodel")
+        if not isinstance(probe_id, str) or probe_id == "":
+            raise ValueError(f"{label}.id must be a non-empty string")
+        if probe_id in seen:
+            raise ValueError(f"{label}.id duplicates {probe_id!r}")
+        seen.add(probe_id)
+        if not isinstance(expression, str) or expression == "" or "\n" in expression:
+            raise ValueError(f"{label}.expression must be one single-line Luau expression")
+        if datamodel not in ("Server", "Client"):
+            raise ValueError(f"{label}.datamodel must be Server or Client")
+        cleaned.append(
+            {
+                "id": probe_id,
+                "expression": expression,
+                "datamodel": datamodel,
+                "equals": item.get("equals"),
+                "has_equals": "equals" in item,
+            }
+        )
+    return cleaned
+
+
+def _jsonable(value: Any) -> Any:
+    try:
+        json.dumps(value)
+    except TypeError:
+        return repr(value)
+    return value

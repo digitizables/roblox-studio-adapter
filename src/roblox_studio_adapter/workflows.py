@@ -44,6 +44,7 @@ class Loop:
         forbid_errors: bool = True,
         screenshot: bool = True,
         intent_id: str | None = None,
+        probes: list[dict] | None = None,
     ) -> dict:
         """Stop play, apply edits, play, collect evidence, stop again.
 
@@ -73,6 +74,7 @@ class Loop:
             expect_contains=expect_contains,
             expect_absent=expect_absent,
             forbid_errors=forbid_errors,
+            probes=probes,
         )
         evidence = evidence_record(
             report,
