@@ -29,8 +29,34 @@ probe.Parent = workspace
         self.assertIsNotNone(yield_risk("while true do end"))
 
     def test_nested_function_inside_a_loop_counts(self) -> None:
-        code = "for i = 1, 9 do local function make() return Instance.new('Part') end make() end"
+        code = "for i = 1, n do local function make() return Instance.new('Part') end make() end"
         self.assertIsNotNone(yield_risk(code))
+
+    def test_small_literal_table_loop_passes(self) -> None:
+        # Three folders from a literal list: the case that tripped while authoring maps.
+        code = """
+for _, n in { "Blocks", "Wells", "Scenery" } do
+    local f = Instance.new("Folder")
+    f.Name = n
+    f.Parent = model
+end
+"""
+        self.assertIsNone(yield_risk(code))
+
+    def test_small_literal_bounds_pass(self) -> None:
+        self.assertIsNone(yield_risk("for i = 0, 3 do Instance.new('Part').Parent = workspace end"))
+
+    def test_nested_literal_loops_multiply(self) -> None:
+        code = "for x = 1, 10 do for z = 1, 10 do Instance.new('Part').Parent = workspace end end"
+        self.assertIsNotNone(yield_risk(code))
+
+    def test_unknown_size_inside_a_literal_loop_is_flagged(self) -> None:
+        code = "for _, s in { 1, -1 } do for i = 1, count do Instance.new('Part') end end"
+        self.assertIsNotNone(yield_risk(code))
+
+    def test_literal_table_with_nested_tables_counts_top_level_items(self) -> None:
+        code = "for _, c in { { 1, 1 }, { 1, -1 }, { -1, 1 } } do Instance.new('Part') end"
+        self.assertIsNone(yield_risk(code))
 
     def test_loop_closed_before_the_instance(self) -> None:
         code = "for i = 1, 3 do if i > 1 then print(i) end end local p = Instance.new('Part')"

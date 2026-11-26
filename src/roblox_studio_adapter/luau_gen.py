@@ -186,31 +186,85 @@ def _strip_strings_and_comments(code: str) -> str:
     return "".join(out)
 
 
+_NUMERIC_FOR = re.compile(r"^\s*\w+\s*=\s*(-?\d+)\s*,\s*(-?\d+)\s*(?:,\s*(-?\d+)\s*)?$")
+_LITERAL_FOR = re.compile(r"^\s*[\w\s,]+\bin\s*\{(.*)\}\s*$", re.DOTALL)
+_DO = re.compile(r"\bdo\b")
+# Instances a run of nested fixed-size loops may create before it counts as bulk work.
+BOUNDED_CREATES = 64
+
+
+def _loop_count(header: str) -> int | None:
+    """Iterations of a for loop whose size is written in the code, or None when it is not.
+
+    Covers `for i = 1, 4` (literal bounds) and `for _, x in { a, b, c }` (a literal table).
+    """
+    numeric = _NUMERIC_FOR.match(header)
+    if numeric:
+        start, stop = int(numeric.group(1)), int(numeric.group(2))
+        step = int(numeric.group(3) or 1)
+        if step == 0:
+            return None
+        return max(0, (stop - start) // step + 1)
+    literal = _LITERAL_FOR.match(header)
+    if literal:
+        body, depth, items, seen = literal.group(1), 0, 0, False
+        for char in body:
+            if char in "{([":
+                depth += 1
+            elif char in "})]":
+                depth -= 1
+            elif char == "," and depth == 0:
+                items += 1
+                seen = False
+                continue
+            if not char.isspace():
+                seen = True
+        return items + (1 if seen else 0)
+    return None
+
+
 def _creates_in_loop(code: str) -> bool:
-    """True when an Instance.new sits lexically inside a for, while, or repeat body."""
-    stack: list[str] = []
+    """True when an Instance.new sits inside a loop body that may run many times.
+
+    A loop with an unknown size counts as bulk. Loops whose size is written in the code (literal
+    bounds or a literal table) only count once their nested sizes multiply past BOUNDED_CREATES, so
+    `for _, name in { "Blocks", "Wells" } do Instance.new("Folder") end` is not flagged.
+    """
+    stripped = _strip_strings_and_comments(code)
+    stack: list[tuple[str, int | None]] = []
     loop_do_pending = 0
-    for match in _TOKEN.finditer(_strip_strings_and_comments(code)):
+    for match in _TOKEN.finditer(stripped):
         word = match.group(0)
         if word.startswith("Instance"):
-            if "loop" in stack:
+            loops = [size for kind, size in stack if kind == "loop"]
+            if any(size is None for size in loops):
                 return True
-        elif word in ("for", "while"):
-            stack.append("loop")
+            product = 1
+            for size in loops:
+                product *= size or 1
+            if loops and product > BOUNDED_CREATES:
+                return True
+        elif word == "for":
+            do = _DO.search(stripped, match.end())
+            header = stripped[match.end() : do.start()] if do else ""
+            stack.append(("loop", _loop_count(header)))
+            loop_do_pending += 1
+        elif word == "while":
+            stack.append(("loop", None))
             loop_do_pending += 1
         elif word == "do":
             # The do of a for or while belongs to that loop; a bare do opens its own block.
             if loop_do_pending:
                 loop_do_pending -= 1
             else:
-                stack.append("do")
+                stack.append(("do", None))
         elif word == "repeat":
-            stack.append("loop")
+            stack.append(("loop", None))
         elif word == "until":
             if stack:
                 stack.pop()
         elif word in ("function", "if"):
-            stack.append(word)
+            stack.append((word, None))
         elif word == "end":
             if stack:
                 stack.pop()
