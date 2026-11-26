@@ -2,9 +2,17 @@ from __future__ import annotations
 
 import time
 import unittest
+from unittest import mock
 
 from roblox_studio_adapter.catalog import static_tools
-from roblox_studio_adapter.errors import AmbiguousOutcome, AmbiguousStudioError, ModeError, StudioConnectionError, ToolFailed
+from roblox_studio_adapter.errors import (
+    AmbiguousOutcome,
+    AmbiguousStudioError,
+    ModeError,
+    NoStudioError,
+    StudioConnectionError,
+    ToolFailed,
+)
 from roblox_studio_adapter.results import StudioState, ToolResult
 from roblox_studio_adapter.session import Session
 
@@ -16,6 +24,7 @@ class FakeClient:
     def __init__(self) -> None:
         self.calls: list[tuple[str, dict]] = []
         self.fail_with: Exception | None = None
+        self.closed = False
         self.protocol = "test"
         self.transport = type("Transport", (), {"command": ["fake"]})()
 
@@ -38,7 +47,7 @@ class FakeClient:
         return [{"name": spec.name, "description": spec.summary, "inputSchema": {"type": "object"}} for spec in static_tools().values() if not spec.documented_only]
 
     def close(self) -> None:
-        return None
+        self.closed = True
 
 
 class SessionTests(unittest.TestCase):
@@ -94,6 +103,45 @@ class SessionTests(unittest.TestCase):
         client.call_tool_raw = boom  # type: ignore[method-assign]
         with self.assertRaises(ToolFailed):
             session.call("script_read", {"target_file": "game.ServerScriptService.Missing"})
+
+
+class _StudioList(FakeClient):
+    def __init__(self, payload: str) -> None:
+        super().__init__()
+        self.payload = payload
+
+    def call_tool_raw(self, name: str, arguments: dict, timeout: float) -> ToolResult:
+        if name == "list_roblox_studios":
+            self.calls.append((name, dict(arguments)))
+            return ToolResult(name=name, text=self.payload)
+        return super().call_tool_raw(name, arguments, timeout)
+
+
+class ConnectCleanupTests(unittest.TestCase):
+    def _connect(self, client: FakeClient):
+        from roblox_studio_adapter.agent import RobloxStudio
+
+        with mock.patch("roblox_studio_adapter.agent.StudioClient.launch", return_value=client):
+            return RobloxStudio.connect()
+
+    def test_select_failure_closes_the_client(self) -> None:
+        ambiguous = FakeClient()
+        with self.assertRaises(AmbiguousStudioError):
+            self._connect(ambiguous)
+        self.assertTrue(ambiguous.closed)
+
+        empty = _StudioList('{"studios":[]}')
+        with self.assertRaises(NoStudioError):
+            self._connect(empty)
+        self.assertTrue(empty.closed)
+
+    def test_successful_connect_leaves_the_client_open(self) -> None:
+        client = _StudioList('{"studios":[{"id":"one","name":"Place1","mode":"Edit"}]}')
+        agent = self._connect(client)
+        self.assertFalse(client.closed)
+        self.assertEqual(agent.session.studio_id, "one")
+        agent.close()
+        self.assertTrue(client.closed)
 
 
 if __name__ == "__main__":

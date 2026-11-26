@@ -53,13 +53,17 @@ class RobloxStudio:
         name_contains: str | None = None,
     ) -> RobloxStudio:
         client = StudioClient.launch(command)
-        context = Context()
-        if artifacts_dir is not None:
-            context.artifacts = Path(artifacts_dir)
-        session = Session(client, context)
-        session.start()
-        agent = cls(session)
-        agent.select(studio_id=studio_id, name_contains=name_contains)
+        try:
+            context = Context()
+            if artifacts_dir is not None:
+                context.artifacts = Path(artifacts_dir)
+            session = Session(client, context)
+            session.start()
+            agent = cls(session)
+            agent.select(studio_id=studio_id, name_contains=name_contains)
+        except Exception:
+            client.close()
+            raise
         return agent
 
     def close(self) -> None:
