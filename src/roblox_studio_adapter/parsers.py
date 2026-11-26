@@ -218,6 +218,46 @@ def parse_save(text: str) -> SaveStatus:
     )
 
 
+def parse_video_capture(text: str) -> dict[str, Any]:
+    """Read a ``video_capture`` stop payload.
+
+    Studio reports ``completed`` or ``partial``. ``partial`` means the
+    recording ended early. It does not mean the playtest ended. The raw
+    text is kept. Paths are filled from the JSON when the keys are present.
+    """
+    data = extract_json(text)
+    status = "unknown"
+    recording_id = None
+    warnings: list[str] = []
+    artifacts = {"video": None, "manifest": None, "frame_times": None}
+    if isinstance(data, dict):
+        raw_status = _as_str(_pick(data, "status", "state"))
+        if raw_status and raw_status.lower() in ("completed", "partial"):
+            status = raw_status.lower()
+        recording_id = _as_str(_pick(data, "recording_id", "recordingId"))
+        warn = _pick(data, "warnings", "capture_warnings", "captureWarnings")
+        if isinstance(warn, list):
+            warnings = [str(item) for item in warn if item]
+        elif isinstance(warn, str) and warn:
+            warnings = [warn]
+        bucket = data.get("artifacts") if isinstance(data.get("artifacts"), dict) else data
+        paths = _pick(data, "artifact_paths", "artifactPaths")
+        if isinstance(paths, dict):
+            bucket = {**bucket, **paths}
+        artifacts = {
+            "video": _as_str(_pick(bucket, "video", "video_path", "videoPath")),
+            "manifest": _as_str(_pick(bucket, "manifest", "manifest_path", "manifestPath")),
+            "frame_times": _as_str(_pick(bucket, "frame_times", "frameTimes")),
+        }
+    return {
+        "status": status,
+        "recording_id": recording_id,
+        "artifacts": artifacts,
+        "warnings": warnings,
+        "text": text,
+    }
+
+
 def parse_job(text: str) -> JobStatus:
     data = extract_json(text)
     status = None

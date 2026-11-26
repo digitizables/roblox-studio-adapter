@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/digitizables/roblox-studio-adapter/blob/main/docs/evidence.schema.json",
+  "title": "Playtest evidence",
+  "description": "JSON record produced by roblox_studio_adapter.evidence.evidence_record. Meanings are in docs/evidence.md.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "kind",
+    "captured_at",
+    "studio_id",
+    "intent_id",
+    "passed",
+    "failures",
+    "checks",
+    "play",
+    "console",
+    "artifacts",
+    "notes"
+  ],
+  "properties": {
+    "schema": { "const": "roblox-studio-adapter.evidence/1" },
+    "kind": { "const": "playtest" },
+    "captured_at": { "type": "string", "minLength": 1 },
+    "studio_id": { "type": ["string", "null"] },
+    "intent_id": { "type": ["string", "null"] },
+    "passed": { "type": ["boolean", "null"] },
+    "failures": { "type": "array", "items": { "type": "string" } },
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "op", "expect", "passed", "detail"],
+        "properties": {
+          "id": { "type": "string" },
+          "op": { "enum": ["contains", "absent", "error_free"] },
+          "expect": { "type": "string" },
+          "passed": { "type": "boolean" },
+          "detail": { "type": "string" }
+        }
+      }
+    },
+    "play": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode_before", "mode_after", "started", "stopped", "seconds"],
+      "properties": {
+        "mode_before": { "type": "string" },
+        "mode_after": { "type": "string" },
+        "started": { "type": "boolean" },
+        "stopped": { "type": "boolean" },
+        "seconds": { "type": "number" }
+      }
+    },
+    "console": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reset",
+        "truncated",
+        "error_count",
+        "warning_count",
+        "errors",
+        "warnings",
+        "excerpt"
+      ],
+      "properties": {
+        "reset": { "type": "boolean" },
+        "truncated": { "type": "boolean" },
+        "error_count": { "type": "integer", "minimum": 0 },
+        "warning_count": { "type": "integer", "minimum": 0 },
+        "errors": { "type": "array", "items": { "type": "string" } },
+        "warnings": { "type": "array", "items": { "type": "string" } },
+        "excerpt": { "type": "string" }
+      }
+    },
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["screenshots", "video"],
+      "properties": {
+        "screenshots": { "type": "array", "items": { "type": "string" } },
+        "video": { "type": ["object", "null"] }
+      }
+    },
+    "notes": { "type": "array", "items": { "type": "string" } }
+  }
+}

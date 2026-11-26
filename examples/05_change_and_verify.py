@@ -41,6 +41,7 @@ def main() -> None:
             expect_contains=["hello from the agent"],
         )
         print("passed:", result["passed"])
+        print("evidence:", result["evidence"]["schema"], result["evidence"]["passed"])
         print("instances:", result["instances"])
         print(result["memory"])
 

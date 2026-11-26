@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "roblox-studio-adapter"
-version = "0.1.0"
+version = "0.1.1"
 description = "Compatibility layer that lets an external agent drive the open Roblox Studio session through the built-in MCP server."
 readme = "README.md"
 requires-python = ">=3.11"

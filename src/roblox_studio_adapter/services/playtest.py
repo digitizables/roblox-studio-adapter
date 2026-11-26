@@ -6,8 +6,8 @@ import time
 from collections.abc import Callable
 
 from roblox_studio_adapter.errors import TimeoutError
-from roblox_studio_adapter.parsers import console_delta, parse_job
-from roblox_studio_adapter.results import ConsoleDelta, PlaytestReport
+from roblox_studio_adapter.parsers import console_delta, parse_video_capture
+from roblox_studio_adapter.results import CheckResult, ConsoleDelta, PlaytestReport
 from roblox_studio_adapter.session import Session
 
 
@@ -52,6 +52,7 @@ class PlaytestService:
         screenshot: bool = True,
         stop: bool = True,
         expect_contains: list[str] | None = None,
+        expect_absent: list[str] | None = None,
         forbid_errors: bool = True,
     ) -> PlaytestReport:
         """Play, wait, collect new output and an optional screenshot, then stop.
@@ -59,7 +60,15 @@ class PlaytestService:
         ``seconds`` is waited in this process. Studio keeps simulating. Do not
         busy-wait inside execute_luau. The playtest camera is left alone;
         frame an edit-time shot with CaptureService instead.
+
+        ``expect_contains`` and ``expect_absent`` are matched against the
+        console delta. Empty strings are rejected before play starts.
+        ``passed`` is true when every named check succeeded. It is null when
+        the caller asked for no judgment (``forbid_errors`` false and both
+        lists empty). Store the JSON form with ``evidence_record``.
         """
+        contains = _needles(expect_contains, "expect_contains")
+        absent = _needles(expect_absent, "expect_absent")
         before = self.state()
         started = not before.playing
         if started:
@@ -82,17 +91,17 @@ class PlaytestService:
                 self.stop()
                 stopped = True
         after = self.state()
-        failures: list[str] = []
-        if forbid_errors and delta.errors:
-            failures.append(f"{len(delta.errors)} output error(s)")
-        for needle in expect_contains or []:
-            if needle not in delta.text:
-                failures.append(f"output did not contain {needle!r}")
-        passed = not failures if (forbid_errors or expect_contains) else None
+        checks, failures = _checks(delta, forbid_errors=forbid_errors, contains=contains, absent=absent)
+        judged = forbid_errors or bool(contains) or bool(absent)
+        passed = (not failures) if judged else None
         notes = [
             "start_stop_play runs a solo playtest. It does not start Team Test or a multi-client session.",
             "Runtime changes disappear when the playtest stops. Edit scripts only after stop.",
         ]
+        if delta.reset:
+            notes.append(
+                "Console snapshot did not match the later log. Checks used the full log from after the playtest."
+            )
         return PlaytestReport(
             mode_before=before.mode,
             mode_after=after.mode,
@@ -103,6 +112,7 @@ class PlaytestService:
             screenshots=shots,
             passed=passed,
             failures=failures,
+            checks=checks,
             notes=notes,
         )
 
@@ -117,8 +127,7 @@ class PlaytestService:
             perform()
         finally:
             result = self.session.call("video_capture", {"is_start": False}, datamodel="Client")
-        status = parse_job(result.text)
-        return {"status": status.status, "text": result.text}
+        return parse_video_capture(result.text)
 
     def _wait_until(self, predicate: Callable[[], bool], timeout: float, message: str) -> None:
         deadline = time.monotonic() + timeout
@@ -128,3 +137,44 @@ class PlaytestService:
             if time.monotonic() >= deadline:
                 raise TimeoutError(message)
             self.sleep(0.4)
+
+
+def _needles(items: list[str] | None, label: str) -> list[str]:
+    if not items:
+        return []
+    cleaned: list[str] = []
+    for item in items:
+        if not isinstance(item, str) or item == "":
+            raise ValueError(f"{label} entries must be non-empty strings")
+        cleaned.append(item)
+    return cleaned
+
+
+def _checks(
+    delta: ConsoleDelta,
+    *,
+    forbid_errors: bool,
+    contains: list[str],
+    absent: list[str],
+) -> tuple[list[CheckResult], list[str]]:
+    checks: list[CheckResult] = []
+    failures: list[str] = []
+
+    def add(check: CheckResult) -> None:
+        checks.append(check)
+        if not check.passed:
+            failures.append(check.detail)
+
+    if forbid_errors:
+        ok = not delta.errors
+        detail = "no output errors" if ok else f"{len(delta.errors)} output error(s)"
+        add(CheckResult("output.error_free", "error_free", "", ok, detail))
+    for index, needle in enumerate(contains, start=1):
+        ok = needle in delta.text
+        detail = f"output contained {needle!r}" if ok else f"output did not contain {needle!r}"
+        add(CheckResult(f"output.contains.{index}", "contains", needle, ok, detail))
+    for index, needle in enumerate(absent, start=1):
+        ok = needle not in delta.text
+        detail = f"output omitted {needle!r}" if ok else f"output contained forbidden {needle!r}"
+        add(CheckResult(f"output.absent.{index}", "absent", needle, ok, detail))
+    return checks, failures

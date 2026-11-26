@@ -110,7 +110,10 @@ result = agent.loop.change_and_verify(
     seconds=3,
     expect_contains=["hello from the agent"],
 )
+print(result["evidence"]["schema"], result["evidence"]["passed"])
 ```
+
+`result["evidence"]` is JSON (`roblox-studio-adapter.evidence/1`). `result["playtest"]` stays a `PlaytestReport`. The field list is `docs/evidence.schema.json`.
 
 Runnable copies live in `examples/`. Examples `03`, `04`, and `05` refuse to run until `ROBLOX_STUDIO_CONFIRM=1` is set, because they edit the place or start a playtest.
 
@@ -138,7 +141,8 @@ text = agent.call("list_plugin_actions").text
 | Patch a snippet | `agent.scripts.replace` |
 | Create parts | `agent.datamodel.apply(specs)` in chunks of 50 |
 | Run a probe | `agent.luau.query(expression)` |
-| Did the change work? | `agent.playtest.run(seconds=..., expect_contains=[...])` |
+| Did the change work? | `agent.playtest.run(seconds=..., expect_contains=[...], expect_absent=[...])` |
+| Store that playtest | `evidence_record(report)` or `change_and_verify(...)["evidence"]` |
 | Still picture | `agent.capture.screenshot()` |
 | Motion, timing, stutter | `agent.playtest.record(perform)` |
 | Creator docs | `agent.docs.search`, then `agent.docs.read` |
@@ -233,6 +237,10 @@ examples/            read-only and opt-in mutating samples
 docs/                architecture, playbook, catalog, limits, sources, plugins
 tests/               framing, parsers, session policy, plugin host
 ```
+
+## Related
+
+[PROVE](https://github.com/digitizables/PROVE) stores goals, intents, and these evidence records. This package remains the Studio tool layer.
 
 ## License
 
