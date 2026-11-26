@@ -28,7 +28,12 @@ def main(argv: list[str] | None = None) -> int:
     tree.add_argument("--path", default="Workspace")
     tree.add_argument("--depth", type=int, default=2)
     tree.add_argument("--name", help="Select the Studio whose name contains this text")
+    sub.add_parser("mcp", help="Serve the adapter's tools as an MCP server on stdio.")
     args = parser.parse_args(argv)
+    if args.command == "mcp":
+        from roblox_studio_adapter.mcp_server import main as serve_mcp
+
+        return serve_mcp()
     if args.command in {None, "steps"}:
         print("\n".join(f"{index}. {step}" for index, step in enumerate(recommended_steps(), start=1)))
         return 0
