@@ -71,7 +71,7 @@ for _, spec in ipairs(specs) do
 end
 ```
 
-`UnyieldingLuau` is a local guess from the source text (a `while` with no `task.wait`, or `Instance.new` inside a `for` with no `task.wait`). It is not Studio's own guard. A snippet can still freeze Studio if the heuristic misses it. Keep probes small.
+`UnyieldingLuau` is a local guess from the source text (a `while` with no `task.wait`, or `Instance.new` lexically inside a `for`, `while` or `repeat` body with no `task.wait`; strings and comments are ignored, and an `Instance.new` outside every loop is fine). It is not Studio's own guard. A snippet can still freeze Studio if the heuristic misses it. Keep probes small.
 
 ## Apply spec
 

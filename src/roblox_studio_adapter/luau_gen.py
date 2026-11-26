@@ -146,18 +146,92 @@ def luau_literal(value: Any) -> str:
     raise EditError(f"Cannot encode {type(value).__name__} as a Luau literal")
 
 
+_LONG_BRACKET = re.compile(r"\[(=*)\[")
+_TOKEN = re.compile(r"Instance\s*\.\s*new\b|\b(?:for|while|repeat|until|function|if|do|end)\b")
+
+
+def _strip_strings_and_comments(code: str) -> str:
+    """Blank out comments and string literals so keywords inside them are not read as code."""
+    out: list[str] = []
+    i, n = 0, len(code)
+    while i < n:
+        if code.startswith("--", i):
+            match = _LONG_BRACKET.match(code, i + 2)
+            if match:
+                close = "]" + match.group(1) + "]"
+                end = code.find(close, match.end())
+                i = n if end < 0 else end + len(close)
+            else:
+                end = code.find("\n", i)
+                i = n if end < 0 else end
+            out.append(" ")
+            continue
+        match = _LONG_BRACKET.match(code, i)
+        if match:
+            close = "]" + match.group(1) + "]"
+            end = code.find(close, match.end())
+            i = n if end < 0 else end + len(close)
+            out.append(' "" ')
+            continue
+        char = code[i]
+        if char in "\"'`":
+            j = i + 1
+            while j < n and code[j] != char and code[j] != "\n":
+                j += 2 if code[j] == "\\" else 1
+            i = j + 1
+            out.append(' "" ')
+            continue
+        out.append(char)
+        i += 1
+    return "".join(out)
+
+
+def _creates_in_loop(code: str) -> bool:
+    """True when an Instance.new sits lexically inside a for, while, or repeat body."""
+    stack: list[str] = []
+    loop_do_pending = 0
+    for match in _TOKEN.finditer(_strip_strings_and_comments(code)):
+        word = match.group(0)
+        if word.startswith("Instance"):
+            if "loop" in stack:
+                return True
+        elif word in ("for", "while"):
+            stack.append("loop")
+            loop_do_pending += 1
+        elif word == "do":
+            # The do of a for or while belongs to that loop; a bare do opens its own block.
+            if loop_do_pending:
+                loop_do_pending -= 1
+            else:
+                stack.append("do")
+        elif word == "repeat":
+            stack.append("loop")
+        elif word == "until":
+            if stack:
+                stack.pop()
+        elif word in ("function", "if"):
+            stack.append(word)
+        elif word == "end":
+            if stack:
+                stack.pop()
+    return False
+
+
 def yield_risk(code: str) -> str | None:
-    """Return a warning when the snippet matches the freeze pattern from the tool docs."""
+    """Return a warning when the snippet matches the freeze pattern from the tool docs.
+
+    A local guess, not Studio's guard: a while loop with no task.wait, or Instance.new inside a loop
+    body with no task.wait. Instance.new outside every loop is fine, so a few one-off parts next to a
+    loop that only sets properties no longer trips it.
+    """
     has_wait = "task.wait" in code
-    has_while = re.search(r"\bwhile\b", code) is not None
-    has_for = re.search(r"\bfor\b", code) is not None
-    creates = "Instance.new" in code
+    has_while = re.search(r"\bwhile\b", _strip_strings_and_comments(code)) is not None
     if has_while and not has_wait:
         return (
             "This while-loop never calls task.wait(). execute_luau runs on Studio's main thread "
             "until it yields, and a spin loop freezes Studio and can drop the MCP connection."
         )
-    if has_for and creates and not has_wait:
+    if not has_wait and _creates_in_loop(code):
         return (
             "This loop creates instances without task.wait(). Split the work into chunks, "
             "parent each chunk's instances one at a time, and call task.wait() once per chunk."
